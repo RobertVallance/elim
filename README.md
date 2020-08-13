@@ -40,8 +40,12 @@ To work the program, supply a list of files and/or directories as arguments to e
 Type 'elim myFile.txt myDir/ mySymbolicLink'
 
 Type 'elim -b (--bins)' to print out recycle bin locations
+
 Type 'elim -c (--contents)' to print out in recycle bin contents
+
 Type 'elim -r (--recover) path_1 path_2 ... path_N' to recover files/folders from path_1, 2, etc into path_N
+
 Type 'elim -o (--obliterate)' to permanently remove files/folders older than 2 days in all bins
+
 Type 'elim -on (--obliterateNow)' to permanently remove files/folders in all bins now
 
