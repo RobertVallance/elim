@@ -1,0 +1,376 @@
+#!/bin/bash
+# elim - a program to replace rm command
+# Developed by Robert Vallance (University of Birmingham)
+# In using this software, the developer accepts no responsibility for any unintentional loss or harm of data
+# Last modification 14 December 2018
+# Program moves files and/or folders to a directory in $BINDIR called .RecycleBin
+# BINDIR depends on the disk the user is using (afs user or work, eos)
+# BINPARENTDIR = disk path, BINDIR = disk path + .RecycleBin
+# ________________________________________
+
+
+
+# GLOBAL variables
+# This BINPARENTDIRS variable is IMPORTANT to check - the list where user bin locations directories are decided
+
+BINPARENTDIRS=(
+"/afs/cern.ch/user/r/rvallanc"
+"/afs/cern.ch/work/r/rvallanc"
+"/eos/user/r/rvallanc"
+)
+
+# replace ~ with full path and remove any final forward slashes on BINPARENTDIRS entries
+for i in "${!BINPARENTDIRS[@]}"; do
+    # replace tilde
+    BINPARENTDIRS[$i]=${BINPARENTDIRS[$i]/'~'/$(eval echo ~)}
+    # remove final forward slashes
+    while [ "${BINPARENTDIRS[$i]: -1}" == "/" ]; do
+	BINPARENTDIRS[$i]=${BINPARENTDIRS[$i]::${#BINPARENTDIRS[$i]}-1}
+    done
+done
+
+
+# function to permanently get rid of files after they have been in recycle bins for $delete_time days (or NOW) - can setup with crontab
+obliterate_files()
+{
+   BINDIR=$1
+   delete_time=$2
+	
+   # make sure BINDIR exists, then cd into it
+   if [ -d $BINDIR ]; then
+      cd $BINDIR
+      
+      # make sure folder we are in is BINDIR and it's called .RecycleBin
+      if [ $PWD/ == $BINDIR/ ] && [ "$(basename $PWD)" == ".RecycleBin" ]; then
+      
+         # toggle for if want to delete now or in delete_time days
+	 if [ $delete_time == "NOW" ]; then
+	    echo "Removing all files NOW in $BINDIR."
+      	    rm -rf *
+	 else 
+	    echo "Removing files in $BINDIR that are older than $delete_time days."
+	    find . -maxdepth 1 -mtime +$delete_time -not -name "." -not -name ".." | xargs rm -rf
+	 fi
+
+      else
+	echo "Cannot enter $BINDIR to delete files"
+
+      fi
+
+   else
+       echo "$BINDIR does not exist"
+   fi
+}
+
+
+
+# if user gives no args or args are -h or --help, show help text
+if [ $# -eq 0 ] || [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+   echo "    ________    ______  ___ "
+   echo "   / ____/ /   /  _/  |/  / "
+   echo "  / __/ / /    / // /|_/ /  "
+   echo " / /___/ /____/ // /  / /   "
+   echo "/_____/_____/___/_/  /_/    "
+   echo "-------------------------------------------------------------------------------------"
+   echo "| Program to replace the rm command, moving files and or folders to a recycle bin   |"
+   echo "| Appends a date and time stamp to file/folder to avoid name clashes in recycle bin |"
+   echo "-------------------------------------------------------------------------------------"
+   echo ""
+   echo "User must provide a list of directories in elim program: $(which elim)"
+   echo "The recycle bins will be placed in these"
+   echo ""
+   echo "Then to work the program, supply a list of files and/or directories as arguments to elim:"
+   echo "Type 'elim myFile.txt myDir/ mySymbolicLink'"
+   echo ""
+   echo "Type 'elim -b (--bins)' to print out recycle bin locations"
+   echo "Type 'elim -c (--contents)' to print out in recycle bin contents"
+   echo "Type 'elim -r (--recover) path_1 path_2 ... path_N' to recover files/folders from path_1, 2, etc into path_N"
+   echo "Type 'elim -o (--obliterate)' to permanently remove files/folders older than 2 days in all bins"
+   echo "Type 'elim -on (--obliterateNow)' to permanently remove files/folders in all bins now"
+   echo ""
+   exit 1
+fi
+
+
+
+
+
+# if user supplies -b argument, then print bin location paths
+if [ "$1" == "-b" ] || [ "$1" == "--bins" ]; then
+   echo "----------------------------------"
+   echo "| PRINTING .RecycleBin LOCATIONS |"
+   echo "----------------------------------"
+
+   # go through bin paths (in BINPARENTDIRS list) and append .RecycleBin onto end to give full path 
+   for BINPARENTDIR in "${BINPARENTDIRS[@]}"; do
+
+      # ignore lines starting with #, spaces or empty lines in binparentdirs
+      if [[ ${BINPARENTDIR:0:1} == "#" ]] || [[ ${BINPARENTDIR:0:1} == " " ]] || [[ $BINPARENTDIR == "" ]]; then
+         continue
+
+      # read line in binparentdirs and append .RecycleBin onto end      
+      else
+         BINDIR=${BINPARENTDIR}/.RecycleBin
+  	 # check if BINDIR exists. If not, tell user to make it by calling elim command 
+	 if [ -d $BINDIR ]; then
+	    echo "$BINDIR"
+	 else
+	    echo "$BINDIR doesn't yet exist - call elim first on a file/folder to make it."
+	 fi
+
+      fi
+
+   done
+   
+
+   
+
+# if user supplies -s argument, print contents of bins
+elif [ "$1" == "-c" ] || [ "$1" == "--contents" ]; then
+   echo "---------------------------------"
+   echo "| PRINTING .RecycleBin CONTENTS |"
+   echo "---------------------------------"
+
+   # go through bin paths (in BINPARENTDIRS list) and append .RecycleBin onto end to give full path 
+   for BINPARENTDIR in "${BINPARENTDIRS[@]}"; do
+
+      # ignore lines starting with #, spaces or empty lines in binparentdirs
+      if [[ ${BINPARENTDIR:0:1} == "#" ]] || [[ ${BINPARENTDIR:0:1} == " " ]] || [[ $BINPARENTDIR == "" ]]; then
+         continue
+     
+      # check read line in binparentdirs and append .RecycleBin onto end
+      else
+         BINDIR=${BINPARENTDIR}/.RecycleBin
+	 
+	 # check if BINDIR exists. If not, tell user to make it by calling elim command 
+	 if [ -d $BINDIR ]; then
+	    echo $BINDIR:
+	       # check if ls -A throws values - if not say no files/folders present
+               if [ "$(ls -A $BINDIR)" ]; then ls -A $BINDIR | cat
+               else echo "NO FILES/FOLDERS"
+	       fi
+	    echo ""
+	 else
+	    echo "$BINDIR doesn't yet exist - call elim first on a file/folder to make it."
+	    echo ""
+	 fi
+      fi
+
+   done
+   
+
+
+
+# if user supplies -r argument, restore that file/folder in recycle bin, removing the appended date and time on the end of the file/folder and putting it in the new folder, $3.
+elif [ "$1" == "-r" ] || [ "$1" == "--recover" ]; then
+
+    # ensure user supplies two additional arguments as well as -r
+    if [ -z $2 ]; then 
+       echo "Please supply at least two arguments to elim -r (files/folders to recover AND a recovery folder destination)"
+       echo ""
+       echo "Files that can be recovered are:"
+       for BINPARENTDIR in "${BINPARENTDIRS[@]}"; do
+       	   BINDIR=${BINPARENTDIR}/.RecycleBin
+	   if [ "$(ls -A $BINDIR)" ]; then ls -d -1 $BINDIR/*; else echo "NO FILES/FOLDERS IN ${BINPARENTDIR}/.RecycleBin"; fi
+       done
+       echo ""
+       exit 1
+
+    # ensure user provices suitable path for file/folder to be recovered   
+    elif [ ! -f $2 ] && [ ! -d $2 ]; then echo "Please provide an existing file/folder in a recycle bin to recover"; exit 1
+
+    # ensure user provides suitable recovery destination folder
+    elif [ ! -d ${@: -1} ] || [[ "${@: -1}" == *".RecycleBin"* ]] || [ -z $3 ]; then echo "Please provide an existing destination folder to recover file/folder into. NB this cannot be a recycle bin"; exit 1
+
+    # if last two arguments are suitable file/folder to recover and recovery folder destination, then can move file/folder into destination
+    else
+
+       # recovery folder is last command line argument
+       recover_folder=${@: -1}
+    
+       # loop over arguments so we can recover several files at once
+       for argument in "$@"; do
+       
+       
+          # since looping over all arguments, don't want to recover the first arg (-r) or last (recovery folder)!
+          if [ "$argument" == "-r" ] || [ "$argument" == "--recover" ]; then continue; fi
+	  if [ "$argument" == "${@: -1}" ]; then continue; fi
+
+	  # make sure file/folder to recover is in a recycle bin - else continue
+	  if [[ "$(cd "$(dirname "$argument")"; pwd)" != *.RecycleBin* ]]; then echo "$argument is not in a recycle bin"; continue; fi
+
+    	  # move file/folder to new destination, given by $3.
+    	  echo "RECOVERING $argument to $recover_folder"
+    	  mv $argument $recover_folder
+
+          # remove any final forward slashes on $argument   
+          while [ "${argument: -1}" == "/" ]; do
+             argument=${argument::${#argument}-1}
+          done
+
+	  # loop over chars argument string
+   	  for (( i=0; i<${#argument}; ++i )); do
+	       
+	     # if argument char is fwd slash, reset name as only want child file/folder name, not parent
+	     if [ "${argument:$i:1}" == "/" ]; then
+	        name=""
+	       
+	     # otherwise, keep adding chars of argument onto name
+	     else
+	        name=${name}${argument:$i:1}
+	     fi
+  
+          done
+
+          # remove last 20 chars of file/folder, which make up the date and time (but only if a file/folder without the 20 chars doesn't exist)
+	  cd $recover_folder
+    	  if [ ! -f ${name::${#name}-20} ] && [ ! -f ${name::${#name}-20} ] && [ ! -L ${name::${#name}-20} ]; then mv $name ${name::${#name}-20}; fi
+	  
+       done
+    
+    fi
+
+
+# if user supplies -o argument, obliterate files that have been in recycle bin for $delete_time days,
+# if user supplies -on argument, obliterate files that have been in recycle bin NOW
+elif [ "$1" == "-o" ] || [ "$1" == "--obliterate" ] || [ "$1" == "-on" ] || [ "$1" == "--obliterateNow" ]; then
+     
+     for BINPARENTDIR in "${BINPARENTDIRS[@]}"; do
+        # ignore lines starting with #, spaces or empty lines in binparentdirs
+   	if [[ ${BINPARENTDIR:0:1} == "#" ]] || [[ ${BINPARENTDIR:0:1} == " " ]] || [[ $BINPARENTDIR == "" ]]; then continue
+        else
+     	   # safety check we aren't in '/' directory
+      	   if [[ "$BINPARENTDIR" != "/" ]] && [[ "$BINPARENTDIR" != "" ]]; then 
+	      if [ "$1" == "-o" ] || [ "$1" == "--obliterate" ]; then obliterate_files "${BINPARENTDIR}/.RecycleBin" 2
+	      elif [ "$1" == "-on" ] || [ "$1" == "--obliterateNOW" ]; then obliterate_files "${BINPARENTDIR}/.RecycleBin" "NOW"
+	      fi
+      	   else echo "Not entering '/' directory - check binparentdirs file";
+      	   fi
+  	fi
+      done
+
+
+
+
+# otherwise user has supplied file or folder arguments
+else
+
+   # date and time stamp to be appended to end of file/folder names
+   today=$(date +"%Y-%m-%d_%H-%M-%S")
+
+   # working directory where we call the elim command
+   original_dir=$PWD
+
+
+   # loop over arguments
+   for argument in "$@"; do
+   
+
+      # check argument is a file, directory or symbolic link; if not then no point carrying on
+      if  [ ! -f $argument ] && [ ! -d $argument ] && [ ! -L $argument ]; then echo "$argument is not a file or directory"; continue; fi
+
+      # remove any final forward slashes   
+      while [ "${argument: -1}" == "/" ]; do
+	 argument=${argument::${#argument}-1}
+      done
+
+
+      # account for special cases where argument has no entry (-z), is current or parent dir, is home or has dashes
+      if [ -z $argument ] || [ $argument == "." ] || [ $argument == ".." ] || [ $argument == ~ ] || [ $argument == "-" ] || [ $argument == "--" ]; then 
+      	 echo "Not removing this argument '$argument'"
+	 continue
+      fi
+      
+
+
+      # Read in list of bin directories, BINPARENTDIRS.
+      # If disk we are currently in (by PWD) matches that of element in list, this is the bin we want to eject the file/folder to.
+      for BINPARENTDIR in "${BINPARENTDIRS[@]}"; do
+      
+         # remove any final forward slashes on $BINDIR - needed for matching of disk to file to be deleted   
+         while [ "${BINPARENTDIR: -1}" == "/" ]; do
+            BINPARENTDIR=${BINPARENTDIR::${#BINPARENTDIR}-1}
+         done
+
+         # ignore lines starting with #, spaces or empty lines in binparentdirs
+         if [[ ${BINPARENTDIR:0:1} == "#" ]] || [[ ${BINPARENTDIR:0:1} == " " ]] || [[ $BINPARENTDIR == "" ]]; then
+            continue
+  
+         # check if current disk matches that of a file in binparentdirs
+         elif [[ "$(cd "$(dirname "$argument")"; pwd)/$(basename "$argument")" == $BINPARENTDIR* ]]; then
+            BINDIR=${BINPARENTDIR}/.RecycleBin
+	    break
+
+	 # if file path does not match a suitable recycle bin folder, set bin folder to the last one in the list
+	 elif [[ $BINPARENTDIR == ${BINPARENTDIRS[${#BINPARENTDIRS[@]}-1]} ]]; then
+	    echo "Using ${BINPARENTDIR}/.RecycleBin (default) since file path does not match a bin directory"
+	    BINDIR=${BINPARENTDIR}/.RecycleBin 
+	    
+         fi
+
+      done
+
+
+      # now out of file loop, do sanity check that we have a folder in this disk for the recycle bin
+      if [[ $BINPARENTDIR == "" ]] || [[ $BINPARENTDIR == "/" ]] || [[ ! -d $BINPARENTDIR ]]; then
+         echo "SOMETHING WENT WRONG"
+         echo "Check BINPARENTDIRS file: (making sure no spaces or newlines are present)"
+	 for BINPARENTDIR in "${BINPARENTDIRS[@]}"; do echo $BINPARENTDIR; done
+         echo "Perhaps one or more paths inside do not exist"
+         exit 1
+      fi
+
+
+      # check recycle bin exists in this disk - if not, make it
+      if [ ! -d "${BINDIR}/" ]; then
+         echo "Making a recycle bin: ${BINDIR}/" 
+         mkdir ${BINDIR}/
+      fi
+
+
+
+      # Check if SYMBOLIC link exists
+      if [ -L $argument ]; then
+	 rm -i $argument
+     
+
+      # check if FILE or FOLDER exists
+      elif [ -f $argument ] || [ -d $argument ]; then
+         touch $argument                                       # updates modified time to now
+    	 echo "Moving $argument to ${BINDIR}/"                 # just a print message
+    	 mv $argument ${BINDIR}/                               # move file to trash folder
+    	 cd ${BINDIR}/                        		       # cd into recycle bin folder
+
+	
+         # this bit of code looks for fwd slashes in arg
+	 # or if slash not at end of arg, then have a child file or folder
+     	   
+	 name="" # name of child folder or file that will be filled
+	 
+	 # loop over chars argument string
+   	 for (( i=0; i<${#argument}; ++i )); do
+	       
+	    # if argument char is fwd slash, reset name as only want child file/folder name, not parent
+	    if [ "${argument:$i:1}" == "/" ]; then
+	       name=""
+	       
+	    # otherwise, keep adding chars of argument onto name
+	    else
+	       name=${name}${argument:$i:1}
+	    fi
+  
+          done
+
+	  # catch here if file/folder name with time_date stamp will match that of a file/folder existing in recycle bin, 
+	  # don't overwrite it wait a second and then append a new date_time stamp
+	  if [ -f ${name}_${today} ] || [ -d ${name}_${today} ]; then sleep 1; today=$(date +"%Y-%m-%d_%H-%M-%S"); fi
+
+	  mv $name ${name}_${today}                     # append current data and time to end of file
+          cd $original_dir	   			# go back to original folder
+
+       fi
+      
+   done
+
+
+fi
